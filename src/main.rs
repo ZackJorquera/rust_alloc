@@ -45,8 +45,6 @@ unsafe fn prev_block_p(p: *mut u8) -> *mut u8
 }
 
 
-
-
 struct ZackAlloc // This is not thread safe
 {
     inner: RefCell<Option<ZackAllocInner>>,  // This is not thread safe
@@ -92,7 +90,7 @@ impl ZackAllocInner
     unsafe fn mem_init(&mut self, len: usize)  // TODO: Option
     {
         /* allocate the storage we will use to model the available VM */
-        self.mem_start_brk = System.alloc(Layout::from_size_align_unchecked(len, 4));
+        self.mem_start_brk = System.alloc(Layout::from_size_align_unchecked(len, 4)); // Big cheat
 
         if self.mem_start_brk.is_null()
         {
