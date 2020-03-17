@@ -296,7 +296,7 @@ unsafe impl GlobalAlloc for ZackAlloc
             inner.replace(ZackAllocInner::new(self.len));
         }
         
-        inner.as_mut().expect("nerver").mm_malloc(layout.size())
+        inner.as_mut().unwrap().mm_malloc(layout.size())
         //System.alloc(layout)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout)
@@ -308,7 +308,7 @@ unsafe impl GlobalAlloc for ZackAlloc
             inner.replace(ZackAllocInner::new(self.len));
         }
         
-        inner.as_mut().expect("nerver").mm_free(ptr)
+        inner.as_mut().unwrap().mm_free(ptr)
         //System.dealloc(ptr, layout)
     }
 }
