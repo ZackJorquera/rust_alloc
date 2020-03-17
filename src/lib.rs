@@ -1,3 +1,29 @@
+//! A very simple (slightly bad) memory allocator writen in rust.
+//!
+//!```rust
+//!extern crate zack_alloc;
+//!use zack_alloc::ZackAlloc;
+//!
+//!#[global_allocator]
+//!static _A: ZackAlloc = ZackAlloc::new(); 
+//!
+//!fn main()
+//!{
+//!    let vec = vec![0i32; 10 * 1024]; // 40 kB
+//!    
+//!    let boxed_val = Box::new(5i32);
+//!    
+//!    let vec2 = vec![0i32; 10 * 1024]; // 40 kB
+//! 
+//!    drop(boxed_val);
+//! 
+//!    let boxed_val_2 = Box::new(10i32);
+//! 
+//!    println!("{:?}", vec);
+//!}
+//!```
+
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::ptr::null_mut;
 use core::cell::RefCell;
@@ -45,7 +71,7 @@ unsafe fn prev_block_p(p: *mut u8) -> *mut u8
 }
 
 
-struct ZackAlloc // This is not thread safe
+pub struct ZackAlloc // This is not thread safe
 {
     inner: RefCell<Option<ZackAllocInner>>,  // This is not thread safe
     len: usize
@@ -54,15 +80,15 @@ struct ZackAlloc // This is not thread safe
 unsafe impl Sync for ZackAlloc {} // I just want to get around the thread safe error
                                   // I'll try to get rid of this in the future
 
-/*
+
 impl ZackAlloc
 {
-    pub const fn new(len: usize) -> Self
+    pub const fn new() -> Self
     {
-        ZackAlloc {inner: RefCell::new(None), len: len}
+        ZackAlloc {inner: RefCell::new(None), len: MAX_HEAP}
     }
 }
-*/
+
 
 struct ZackAllocInner
 {
@@ -107,7 +133,7 @@ impl ZackAllocInner
     pub fn new(len: usize) -> Self
     {
         let mut ret = ZackAllocInner { mem_start_brk: null_mut(), mem_brk: null_mut(), mem_max_addr: null_mut(), heap_listp: null_mut() };
-        //printf("in mm_init\n");
+
         unsafe { 
             ret.mem_init(len);
             ret.heap_listp = ret.mem_sbrk(4*WSIZE);
@@ -120,8 +146,6 @@ impl ZackAllocInner
 
             ret.heap_listp = (ret.heap_listp as usize + 2*WSIZE) as *mut u8; //8 bytes because heap_listp is a char* then we inc by bytes
 
-            //printf("1\n");
-
             ret.extend_heap(CHUNK_SIZE/WSIZE); //extend_heap takes words and CHUNK_SIZE is in bytes
         }
 
@@ -130,8 +154,6 @@ impl ZackAllocInner
 
     unsafe fn extend_heap(&mut self, words: usize) -> *mut u8 // TODO: Option
     {
-        //printf("in extend_heap, words: %u\n", words);
-
         let size = if words%2 == 0 { words } else { words+1 } * WSIZE;
 
         let new_block_p = self.mem_sbrk(size); // points to after the original epilogue block
@@ -140,24 +162,16 @@ impl ZackAllocInner
         put(ftr_p(new_block_p), pack(size as u32, false));
 
         put(hdr_p(next_block_p(new_block_p)), pack(0,true));// we need to add back the Epilogue block
-        
-        //printf("2, size: %u\n",size);
-        
-        //printf("10a, newBlock:%p:%p\n", newBlock, newBlock+GET_SIZE(HDRP(newBlock))-9);
 
         //we need to coalesce in the case that the previus block is not allocated
-        let new_coalesce_block_p = self.coalesce(new_block_p);
+        let new_coalesced_block_p = self.coalesce(new_block_p);
 
-        
-        //printf("10b, newBlock:%p:%p\n", newBlock, newBlock+GET_SIZE(HDRP(newBlock))-9);
-
-        new_coalesce_block_p
+        new_coalesced_block_p
     }
 
     unsafe fn coalesce(&self, bp: *mut u8) -> *mut u8
     {
-        //printf("in coalesce\n");
-        //If bp is unalloc check the block infront and behind.
+        // If bp is unalloc check the block infront and behind.
         // if the one infront is unalloc changes it to be bp and change bp size to add the old bp size
         // if the one in back is unalloc change bps size to add the new
 
@@ -297,22 +311,4 @@ unsafe impl GlobalAlloc for ZackAlloc
         inner.as_mut().expect("nerver").mm_free(ptr)
         //System.dealloc(ptr, layout)
     }
-}
-
-#[cfg_attr(not(test), global_allocator)]
-static _A: ZackAlloc = ZackAlloc {inner: RefCell::new(None), len: MAX_HEAP};
-
-fn main()
-{
-    //let float_test: f64 = 0.0;
-    //let layout = Layout::for_value(&float_test);
-    //println!("{:?} {} {}", layout, layout.size(), layout.align());
-    
-
-    let mut vec = vec![1,2,3];
-    vec.push(4);
-    println!("{:?}", vec);
-
-    let a = Box::new(15);
-    println!("{}", a);
 }

@@ -1,5 +1,5 @@
 [package]
-name = "rust_alloc"
+name = "zack_alloc"
 version = "0.1.0"
 authors = ["ZackJorquera <jorquerazack@gmail.com>"]
 edition = "2018"
