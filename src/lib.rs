@@ -11,15 +11,32 @@
 //!{
 //!    let vec = vec![0i32; 10 * 1024]; // 40 kB
 //!    
+//!    let boxed_val_3 = Box::new(0i32);
+//!    let box_ptr_3 = Box::into_raw(boxed_val_3);
+//!    let boxed_val_3 = unsafe { Box::from_raw(box_ptr_3) };
+//!    
 //!    let boxed_val = Box::new(5i32);
+//!    let box_ptr = Box::into_raw(boxed_val);
+//!    let boxed_val = unsafe { Box::from_raw(box_ptr) };
 //!    
 //!    let vec2 = vec![0i32; 10 * 1024]; // 40 kB
-//! 
 //!    drop(boxed_val);
-//! 
-//!    let boxed_val_2 = Box::new(10i32);
-//! 
-//!    println!("{:?}", vec);
+//!    
+//!    let boxed_val_2 = Box::new(5i32);
+//!    let box_ptr_2 = Box::into_raw(boxed_val_2);
+//!    let boxed_val_2 = unsafe { Box::from_raw(box_ptr_2) };
+//!    drop(boxed_val_2);
+//!    
+//!    drop(boxed_val_3);
+//!    
+//!    
+//!    println!("{}", vec[1000]); // make sure the vectors were compiled
+//!    println!("{}", vec2[1000]);
+//!    println!("{:#x?} {:#x?}", box_ptr, box_ptr_2);
+//!
+//!    assert_eq!(box_ptr, box_ptr_2);
+//!    assert_ne!(box_ptr, box_ptr_3);
+//!    assert_ne!(box_ptr_2, box_ptr_3);
 //!}
 //!```
 
@@ -89,6 +106,20 @@ impl ZackAlloc
     }
 }
 
+impl Drop for ZackAlloc
+{
+    fn drop(&mut self) // This is never called
+    {
+        match self.inner.borrow_mut().as_mut()
+        {
+            Some(inner) => drop(inner),
+            None => ()
+        }
+
+        self.inner.replace(None);
+    }
+}
+
 
 struct ZackAllocInner
 {
@@ -96,7 +127,22 @@ struct ZackAllocInner
     mem_brk: *mut u8,
     mem_max_addr: *mut u8,
 
-    heap_listp: *mut u8
+    heap_listp: *mut u8,
+
+    heap_layout: Option<Layout>
+}
+
+impl Drop for ZackAllocInner
+{
+    fn drop(&mut self)
+    {
+        unsafe{ self.mem_remove(); }
+        
+        self.mem_start_brk = null_mut();
+        self.mem_brk = null_mut();
+        self.mem_max_addr = null_mut();
+        self.heap_listp = null_mut();
+    }
 }
 
 impl ZackAllocInner
@@ -116,7 +162,8 @@ impl ZackAllocInner
     unsafe fn mem_init(&mut self, len: usize)  // TODO: Option
     {
         /* allocate the storage we will use to model the available VM */
-        self.mem_start_brk = System.alloc(Layout::from_size_align_unchecked(len, 4)); // Big cheat
+        self.heap_layout = Layout::from_size_align(len, 4).ok();
+        self.mem_start_brk = System.alloc(self.heap_layout.unwrap()); // Big cheat
 
         if self.mem_start_brk.is_null()
         {
@@ -126,13 +173,22 @@ impl ZackAllocInner
         self.mem_max_addr = (self.mem_start_brk as usize + len) as *mut u8;  /* max legal heap address */
         self.mem_brk = self.mem_start_brk; 
     }
+
+    unsafe fn mem_remove(&mut self)  // TODO: Option
+    {
+        match self.heap_layout
+        {
+            Some(layout) => System.dealloc(self.mem_start_brk, layout),
+            None => ()
+        }
+    }
 }
 
 impl ZackAllocInner
 {
     pub fn new(len: usize) -> Self
     {
-        let mut ret = ZackAllocInner { mem_start_brk: null_mut(), mem_brk: null_mut(), mem_max_addr: null_mut(), heap_listp: null_mut() };
+        let mut ret = ZackAllocInner { mem_start_brk: null_mut(), mem_brk: null_mut(), mem_max_addr: null_mut(), heap_listp: null_mut(), heap_layout: None};
 
         unsafe { 
             ret.mem_init(len);
